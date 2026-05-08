@@ -423,16 +423,41 @@ main {
   margin-left: auto;
 }
 
+.log-body-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .log-data {
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 120px;
   overflow-y: auto;
+  flex: 1;
+  min-width: 0;
 }
 
 .log-data::-webkit-scrollbar { width: 4px; }
 .log-data::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.log-copy-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+.log-entry:hover .log-copy-btn { opacity: 1; }
+.log-copy-btn:hover { color: var(--accent); }
+.log-copy-btn.copied { color: var(--accent); opacity: 1; }
 
 .compose-panel {
   display: flex;
@@ -609,7 +634,15 @@ main {
   margin-bottom: 6px;
 }
 
-.ws-url {
+.ws-url-row {
+  display: flex;
+  gap: 6px;
+}
+
+.ws-url-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--accent);
@@ -617,36 +650,58 @@ main {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  cursor: pointer;
+  gap: 0;
   transition: border-color 0.15s;
 }
 
-.ws-url:hover {
+.ws-url-field:hover {
   border-color: var(--accent);
 }
 
-.ws-url-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.ws-url-prefix {
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
-.copy-btn {
-  flex-shrink: 0;
+.ws-host-input {
   background: none;
   border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  width: 100%;
+  min-width: 40px;
+  padding: 0;
+}
+
+.ws-host-input::placeholder {
+  color: var(--text-muted);
+}
+
+.ws-url-copy-btn {
+  flex-shrink: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
   color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
-  padding: 2px;
-  transition: color 0.15s;
+  padding: 6px 10px;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
 }
 
-.copy-btn:hover { color: var(--accent); }
+.ws-url-copy-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ws-url-copy-btn.copied {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 .test-code-section {
   padding: 12px 16px;
@@ -784,9 +839,12 @@ main {
       <div class="panel-body">
         <div class="ws-url-box" id="wsUrlBox" style="display:none">
           <div class="ws-url-label">WebSocket URL</div>
-          <div class="ws-url" onclick="copyWsUrl()">
-            <span class="ws-url-text" id="wsUrlText">ws://localhost:8080</span>
-            <button class="copy-btn" title="Copy">&#128203;</button>
+          <div class="ws-url-row">
+            <div class="ws-url-field">
+              <span class="ws-url-prefix">ws://</span>
+              <input type="text" class="ws-host-input" id="wsHostInput" value="localhost" placeholder="host">
+            </div>
+            <button class="ws-url-copy-btn" id="wsCopyBtn" onclick="copyWsUrl()" title="Copy URL">&#128203;</button>
           </div>
         </div>
         <div class="test-code-section">
@@ -839,7 +897,8 @@ const msgInput = document.getElementById('msgInput');
 const targetSelect = document.getElementById('targetSelect');
 const clientCount = document.getElementById('clientCount');
 const wsUrlBox = document.getElementById('wsUrlBox');
-const wsUrlText = document.getElementById('wsUrlText');
+const wsHostInput = document.getElementById('wsHostInput');
+const wsCopyBtn = document.getElementById('wsCopyBtn');
 const infoEmpty = document.getElementById('infoEmpty');
 const codeUrl = document.getElementById('codeUrl');
 const autoscrollBtn = document.getElementById('autoscrollBtn');
@@ -889,9 +948,9 @@ function updateStatus(d) {
     sendBtn.disabled = false;
     wsUrlBox.style.display = '';
     infoEmpty.style.display = 'none';
-    const url = `ws://localhost:${d.port}`;
-    wsUrlText.textContent = url;
+    const url = getWsUrl(d.port);
     codeUrl.textContent = `"${url}"`;
+    wsHostInput.disabled = false;
   } else {
     statusDot.classList.remove('running');
     statusText.textContent = 'Offline';
@@ -971,14 +1030,21 @@ function addLogEntry(entry) {
     }
   } catch {}
 
-  div.innerHTML = `
+  const entryHtml = `
     <div class="log-header">
       <span class="log-tag ${entry.type}">${entry.type}</span>
       ${shortId ? `<span class="log-client">${shortId}</span>` : ''}
       <span class="log-time">${new Date(entry.timestamp).toLocaleTimeString()}</span>
     </div>
-    <div class="log-data">${escapeHtml(data)}</div>
+    <div class="log-body-row">
+      <div class="log-data">${escapeHtml(data)}</div>
+      <button class="log-copy-btn" title="Copy message">&#128203;</button>
+    </div>
   `;
+  div.innerHTML = entryHtml;
+  const copyBtn = div.querySelector('.log-copy-btn');
+  copyBtn.dataset.raw = data;
+  copyBtn.addEventListener('click', function() { copyLogData(this); });
 
   messageLog.appendChild(div);
 
@@ -1060,12 +1126,32 @@ function toggleTestCode() {
   document.getElementById('testCodeBlock').classList.toggle('visible');
 }
 
+function getWsUrl(port) {
+  const host = wsHostInput.value.trim() || 'localhost';
+  return `ws://${host}:${port}`;
+}
+
 function copyWsUrl() {
-  navigator.clipboard.writeText(wsUrlText.textContent);
-  wsUrlText.textContent = 'Copied!';
+  const port = portInput.value;
+  const url = getWsUrl(port);
+  navigator.clipboard.writeText(url);
+  wsCopyBtn.classList.add('copied');
+  wsCopyBtn.textContent = '\u2713';
   setTimeout(() => {
-    wsUrlText.textContent = `ws://localhost:${portInput.value}`;
-  }, 1000);
+    wsCopyBtn.classList.remove('copied');
+    wsCopyBtn.innerHTML = '&#128203;';
+  }, 1500);
+}
+
+function copyLogData(btn) {
+  const text = btn.dataset.raw || '';
+  navigator.clipboard.writeText(text);
+  btn.classList.add('copied');
+  btn.innerHTML = '&#10003;';
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.innerHTML = '&#128203;';
+  }, 1500);
 }
 
 msgInput.addEventListener('keydown', (e) => {
