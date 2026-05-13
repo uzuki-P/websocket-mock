@@ -147,6 +147,11 @@ header {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+.path-input {
+  width: 100px;
+  text-align: left;
+}
+
 .btn {
   padding: 7px 16px;
   border: 1px solid var(--border);
@@ -774,6 +779,10 @@ main {
         <label for="portInput">Port</label>
         <input type="number" id="portInput" class="port-input" value="8080" min="1" max="65535">
       </div>
+      <div class="port-group">
+        <label for="pathInput">Path</label>
+        <input type="text" id="pathInput" class="port-input path-input" value="/" placeholder="/">
+      </div>
       <button class="btn btn-start" id="startBtn" onclick="startServer()">Start Server</button>
       <button class="btn btn-stop" id="stopBtn" onclick="stopServer()" style="display:none">Stop</button>
     </div>
@@ -840,9 +849,8 @@ main {
         <div class="ws-url-box" id="wsUrlBox" style="display:none">
           <div class="ws-url-label">WebSocket URL</div>
           <div class="ws-url-row">
-            <div class="ws-url-field">
-              <span class="ws-url-prefix">ws://</span>
-              <input type="text" class="ws-host-input" id="wsHostInput" value="localhost" placeholder="host">
+            <div class="ws-url-field" id="wsUrlField">
+              ws://localhost:8080/
             </div>
             <button class="ws-url-copy-btn" id="wsCopyBtn" onclick="copyWsUrl()" title="Copy URL">&#128203;</button>
           </div>
@@ -892,12 +900,13 @@ const statusText = document.getElementById('statusText');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const portInput = document.getElementById('portInput');
+const pathInput = document.getElementById('pathInput');
 const sendBtn = document.getElementById('sendBtn');
 const msgInput = document.getElementById('msgInput');
 const targetSelect = document.getElementById('targetSelect');
 const clientCount = document.getElementById('clientCount');
 const wsUrlBox = document.getElementById('wsUrlBox');
-const wsHostInput = document.getElementById('wsHostInput');
+const wsUrlField = document.getElementById('wsUrlField');
 const wsCopyBtn = document.getElementById('wsCopyBtn');
 const infoEmpty = document.getElementById('infoEmpty');
 const codeUrl = document.getElementById('codeUrl');
@@ -941,22 +950,24 @@ function updateStatus(d) {
   serverRunning = d.running;
   if (d.running) {
     statusDot.classList.add('running');
-    statusText.textContent = `ws://:${d.port}`;
+    statusText.textContent = `ws://:${d.port}${d.path || '/'}`;
     startBtn.style.display = 'none';
     stopBtn.style.display = '';
     portInput.disabled = true;
+    pathInput.disabled = true;
     sendBtn.disabled = false;
     wsUrlBox.style.display = '';
     infoEmpty.style.display = 'none';
-    const url = getWsUrl(d.port);
+    const url = getWsUrl(d.port, d.path);
+    wsUrlField.textContent = url;
     codeUrl.textContent = `"${url}"`;
-    wsHostInput.disabled = false;
   } else {
     statusDot.classList.remove('running');
     statusText.textContent = 'Offline';
     startBtn.style.display = '';
     stopBtn.style.display = 'none';
     portInput.disabled = false;
+    pathInput.disabled = false;
     sendBtn.disabled = true;
     wsUrlBox.style.display = 'none';
     infoEmpty.style.display = clients.length ? 'none' : 'flex';
@@ -1061,10 +1072,13 @@ function escapeHtml(str) {
 
 async function startServer() {
   const port = parseInt(portInput.value) || 8080;
+  let path = pathInput.value.trim() || '/';
+  if (!path.startsWith('/')) path = '/' + path;
+  localStorage.setItem('ws-forge-path', path);
   const res = await fetch('/api/server/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ port }),
+    body: JSON.stringify({ port, path }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -1126,14 +1140,13 @@ function toggleTestCode() {
   document.getElementById('testCodeBlock').classList.toggle('visible');
 }
 
-function getWsUrl(port) {
-  const host = wsHostInput.value.trim() || 'localhost';
-  return `ws://${host}:${port}`;
+function getWsUrl(port, path) {
+  path = path || '/';
+  return `ws://localhost:${port}${path}`;
 }
 
 function copyWsUrl() {
-  const port = portInput.value;
-  const url = getWsUrl(port);
+  const url = wsUrlField.textContent.trim();
   navigator.clipboard.writeText(url);
   wsCopyBtn.classList.add('copied');
   wsCopyBtn.textContent = '\u2713';
@@ -1165,6 +1178,9 @@ autoscrollBtn.style.color = 'var(--accent)';
 autoscrollBtn.style.borderColor = 'var(--accent)';
 
 async function init() {
+  const savedPath = localStorage.getItem('ws-forge-path');
+  if (savedPath !== null) pathInput.value = savedPath;
+
   connectSSE();
   const res = await fetch('/api/server/status');
   const status = await res.json();

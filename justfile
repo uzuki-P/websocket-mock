@@ -8,7 +8,7 @@ install:
     npm install
 
 # Start the server
-start:
+run:
     node server.js
 
 # Start with file watching (auto-restart on changes)

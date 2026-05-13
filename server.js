@@ -53,6 +53,7 @@ app.get('/api/server/status', (req, res) => {
   res.json({
     running: wsServer !== null,
     port: wsServer ? wsServer.options.port : null,
+    path: wsServer ? wsServer.options.path : null,
     clientCount: clients.size,
   });
 });
@@ -66,9 +67,13 @@ app.post('/api/server/start', (req, res) => {
     return res.status(400).json({ error: 'Invalid port number' });
   }
 
+  let path = req.body.path || '/';
+  if (!path.startsWith('/')) path = '/' + path;
+
   try {
-    wsServer = new WSServer({ port });
+    wsServer = new WSServer({ port, path });
     wsServer.options.port = port;
+    wsServer.options.path = path;
 
     wsServer.on('connection', (ws, req) => {
       const clientId = crypto.randomUUID();
@@ -82,7 +87,7 @@ app.post('/api/server/start', (req, res) => {
 
       const logEntry = addLog('connect', `Client connected from ${clientInfo.ip}`, clientId);
       broadcastToSSE('client_connected', { client: { id: clientId, ip: clientInfo.ip, connectedAt: clientInfo.connectedAt }, log: logEntry });
-      broadcastToSSE('status', { running: true, port, clientCount: clients.size });
+      broadcastToSSE('status', { running: true, port, path, clientCount: clients.size });
 
       ws.on('message', (raw) => {
         const text = raw.toString();
@@ -94,7 +99,7 @@ app.post('/api/server/start', (req, res) => {
         clients.delete(clientId);
         const logEntry = addLog('disconnect', `Client disconnected`, clientId);
         broadcastToSSE('client_disconnected', { clientId, log: logEntry });
-        broadcastToSSE('status', { running: true, port, clientCount: clients.size });
+        broadcastToSSE('status', { running: true, port, path, clientCount: clients.size });
       });
 
       ws.on('error', () => {
@@ -108,8 +113,8 @@ app.post('/api/server/start', (req, res) => {
     });
 
     wsServer.on('listening', () => {
-      broadcastToSSE('status', { running: true, port, clientCount: 0 });
-      res.json({ success: true, port });
+      broadcastToSSE('status', { running: true, port, path, clientCount: 0 });
+      res.json({ success: true, port, path });
     });
   } catch (err) {
     wsServer = null;
